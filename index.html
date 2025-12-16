@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stephenson III Linkage Simulator</title>
+    <style>
+        :root {
+            --bg-color: #f3f4f6;
+            --panel-bg: #ffffff;
+            --primary: #2563eb;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 20px;
+            width: 100%;
+            max-width: 1400px;
+            height: 100%;
+        }
+
+        /* 左侧绘图区 */
+        .canvas-area {
+            background: var(--panel-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 1px solid var(--border);
+        }
+
+        canvas {
+            background-color: #ffffff;
+            cursor: crosshair;
+        }
+
+        /* 右侧控制区 */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        h2, h3 { margin-top: 0; margin-bottom: 10px; font-size: 1.1rem; color: var(--text-main); }
+        h3 { font-size: 0.95rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* 控件样式 */
+        .control-group { margin-bottom: 15px; }
+        label { display: block; font-size: 0.9rem; margin-bottom: 5px; font-weight: 500; }
+        
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--primary);
+        }
+
+        .btn-group { display: flex; gap: 10px; margin-top: 10px; }
+        
+        button {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+
+        button:hover { background-color: #f9fafb; border-color: #d1d5db; }
+        button.primary { background-color: var(--primary); color: white; border: none; }
+        button.primary:hover { background-color: #1d4ed8; }
+
+        /* 矩阵表格 */
+        .matrix-container {
+            overflow-x: auto;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 0.8rem;
+        }
+
+        table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
+        td, th { padding: 4px; text-align: right; border: 1px solid #eee; }
+        th { background: #f8fafc; color: var(--text-muted); font-weight: 600; }
+        
+        .val-pos { color: #2563eb; }
+        .val-neg { color: #dc2626; }
+        .val-zero { color: #9ca3af; }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        .status-ok { background: #dcfce7; color: #166534; }
+        .status-err { background: #fee2e2; color: #991b1b; }
+
+        /* 水印/说明 */
+        .canvas-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+        }
+        .canvas-overlay h1 { margin: 0; font-size: 1.5rem; color: #333; }
+        .canvas-overlay p { margin: 5px 0 0 0; color: #666; font-size: 0.9rem; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="canvas-area" id="canvasContainer">
+        <canvas id="mechCanvas" width="1000" height="600"></canvas>
+        <div class="canvas-overlay">
+            <h1>Stephenson III Linkage</h1>
+            <p>Loop 1: A-B-C-D | Loop 2: E-F-G | <span style="color:var(--primary)">nv = 2</span></p>
+        </div>
+    </div>
+
+    <div class="sidebar">
+        <div class="panel">
+            <h2>控制 (Controls)</h2>
+            <div class="control-group">
+                <div style="display:flex; justify-content:space-between;">
+                    <label>输入角 $\theta_2$ (Input)</label>
+                    <span id="thetaDisplay" style="font-family:monospace; font-weight:bold;">60.0°</span>
+                </div>
+                <input type="range" id="thetaSlider" min="0" max="360" step="0.5" value="60">
+            </div>
+
+            <div class="btn-group">
+                <button id="btnAnimate">▶ 自动旋转</button>
+                <button id="btnReset">↺ 重置</button>
+            </div>
+            <div class="btn-group">
+                <button class="primary" id="btnSave">📷 下载图片 (PNG)</button>
+            </div>
+            
+            <div style="margin-top:15px; border-top:1px solid #eee; padding-top:10px;">
+                <span id="statusIndicator" class="status-badge status-ok">状态: 正常</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>Matrix A ($\partial \Phi / \partial x$)</h3>
+            <div class="matrix-container" id="matrixA">
+                </div>
+        </div>
+
+        <div class="panel">
+            <h3>Matrix B ($\partial \Phi / \partial u$)</h3>
+            <div class="matrix-container" id="matrixB">
+                </div>
+            <div id="detBInfo" style="font-size:0.8rem; margin-top:5px; font-family:monospace; text-align:right;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<script>
+/**
+ * 核心逻辑与算法 (Ported from Python)
+ */
+
+const CONFIG = {
+    colors: {
+        bg: '#ffffff',
+        ground: '#9ca3af', // 灰色
+        link1: '#2563eb',  // 蓝色 (AB)
+        link3: '#9333ea',  // 紫色 (CD)
+        coupler: '#86efac', // 浅绿填充
+        couplerBorder: '#16a34a', // 深绿边框
+        link7: '#f59e0b',  // 橙色 (EF)
+        link8: '#78350f',  // 棕色 (FG)
+        joint: '#ef4444',  // 红色节点
+        text: '#374151'
+    }
+};
+
+// 机构参数 (x1 - x8)
+const PARAMS = {
+    L_AB: 100, L_BC: 220, L_CD: 200, L_AD: 300,
+    L_BE: 140, L_CE: 120,
+    L_EF: 240, L_FG: 220,
+    Ax: 200, Ay: 400,
+    Dx: 500, Dy: 400,
+    Gx: 650, Gy: 400
+};
+
+// 全局状态
+let state = {
+    theta2: 60 * (Math.PI / 180), // 弧度
+    animating: false,
+    animationId: null
+};
+
+// === 数学辅助函数 ===
+
+function rad2deg(rad) { return rad * 180 / Math.PI; }
+function deg2rad(deg) { return deg * Math.PI / 180; }
+
+// 计算两圆交点
+// side: +1 or -1
+function calculateCircleIntersection(p1, r1, p2, r2, side) {
+    const d2 = (p1.x - p2.x)**2 + (p1.y - p2.y)**2;
+    const d = Math.sqrt(d2);
+
+    if (d > r1 + r2 || d < Math.abs(r1 - r2) || d === 0) return null;
+
+    const a = (r1**2 - r2**2 + d2) / (2 * d);
+    const h = Math.sqrt(Math.max(0, r1**2 - a**2));
+
+    const x2 = p1.x + a * (p2.x - p1.x) / d;
+    const y2 = p1.y + a * (p2.y - p1.y) / d;
+
+    const x3 = x2 + side * h * (p2.y - p1.y) / d;
+    // 注意：Canvas Y轴向下，但这个公式是通用的几何公式，
+    // 在这里应用时，由于屏幕坐标系的Y是翻转的，交叉积方向反向，
+    // 但只要保持相对一致性即可。根据Python代码逻辑：
+    // y3 = y2 - side * h * (p2.x - p1.x) / d
+    const y3 = y2 - side * h * (p2.x - p1.x) / d;
+
+    return { x: x3, y: y3 };
+}
+
+// === 运动学求解 (Solver) ===
+
+function solveKinematics(thetaInput) {
+    const p = PARAMS;
+    
+    // 1. Ground
+    const A = { x: p.Ax, y: p.Ay };
+    const D = { x: p.Dx, y: p.Dy };
+    const G = { x: p.Gx, y: p.Gy };
+
+    // 2. Point B (Crank) - Canvas coordinates (Y down)
+    // Python: y = Ay - L * sin(theta)
+    const B = {
+        x: A.x + p.L_AB * Math.cos(thetaInput),
+        y: A.y - p.L_AB * Math.sin(thetaInput) 
+    };
+
+    // 3. Point C (Intersection of circle B-r1 and D-r2)
+    // sideSelector = -1 based on python code logic for this configuration
+    const C = calculateCircleIntersection(B, p.L_BC, D, p.L_CD, -1);
+    if (!C) return null;
+
+    // 4. Point E (Rigid triangle off BC)
+    const E = calculateCircleIntersection(B, p.L_BE, C, p.L_CE, 1);
+    if (!E) return null;
+
+    // 5. Point F (Linkage E-F-G)
+    // Intersection of E-radius and G-radius
+    const F = calculateCircleIntersection(E, p.L_EF, G, p.L_FG, 1);
+    if (!F) return null;
+
+    return { A, B, C, D, E, F, G };
+}
+
+// === 角度求解 (用于矩阵) ===
+function solveAngles(pos, thetaInput) {
+    if (!pos) return null;
+
+    // Canvas coords (Y down) to Math coords (Y up) -> atan2(-dy, dx)
+    const getAngle = (p1, p2) => Math.atan2(-(p2.y - p1.y), p2.x - p1.x);
+
+    const theta3 = getAngle(pos.B, pos.C);
+    const theta4 = getAngle(pos.D, pos.C);
+    
+    // Alpha calculation
+    const p = PARAMS;
+    const cosAlpha = (p.L_BC**2 + p.L_BE**2 - p.L_CE**2) / (2 * p.L_BC * p.L_BE);
+    const alpha = Math.acos(Math.max(-1, Math.min(1, cosAlpha)));
+    
+    const theta5 = theta3 + alpha;
+    const theta6 = getAngle(pos.E, pos.F);
+    const theta7 = getAngle(pos.G, pos.F);
+
+    return { theta2: thetaInput, theta3, theta4, theta5, theta6, theta7, alpha };
+}
+
+// === 矩阵计算 ===
+
+function calculateMatrices(thetaInput) {
+    const pos = solveKinematics(thetaInput);
+    if (!pos) return null;
+    const ang = solveAngles(pos, thetaInput);
+
+    const { theta2, theta3, theta4, theta5, theta6, theta7 } = ang;
+    const p = PARAMS;
+
+    // Matrix A (4x8)
+    // Rows: Phi1(X), Phi2(Y), Phi3(X), Phi4(Y)
+    // Cols: x1..x8
+    const A = [
+        [Math.cos(theta2), Math.cos(theta3), -Math.cos(theta4), -1, 0, 0, 0, 0],
+        [Math.sin(theta2), Math.sin(theta3), -Math.sin(theta4), 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, Math.cos(theta5), 0, Math.cos(theta6), -Math.cos(theta7)],
+        [0, 0, 0, 0, Math.sin(theta5), 0, Math.sin(theta6), -Math.sin(theta7)]
+    ];
+
+    // Matrix B (4x4)
+    // Cols: theta3, theta4, theta6, theta7
+    // Note: d(theta5)/d(theta3) = 1
+    const B = [
+        [-p.L_BC * Math.sin(theta3), p.L_CD * Math.sin(theta4), 0, 0],
+        [p.L_BC * Math.cos(theta3), -p.L_CD * Math.cos(theta4), 0, 0],
+        [-p.L_BE * Math.sin(theta5), 0, -p.L_EF * Math.sin(theta6), p.L_FG * Math.sin(theta7)],
+        [p.L_BE * Math.cos(theta5), 0, p.L_EF * Math.cos(theta6), -p.L_FG * Math.cos(theta7)]
+    ];
+
+    return { A, B, ang };
+}
+
+// === 绘图逻辑 ===
+
+const canvas = document.getElementById('mechCanvas');
+const ctx = canvas.getContext('2d');
+
+function drawLine(p1, p2, color, width, dash=[]) {
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.setLineDash(dash);
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+function drawJoint(p, label) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 6, 0, 2 * Math.PI);
+    ctx.fillStyle = 'white';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = CONFIG.colors.joint;
+    ctx.stroke();
+
+    if (label) {
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.fillText(label, p.x + 10, p.y - 10);
+    }
+}
+
+function drawText(p1, p2, text) {
+    const mx = (p1.x + p2.x) / 2;
+    const my = (p1.y + p2.y) / 2;
+    ctx.fillStyle = '#666';
+    ctx.font = '12px sans-serif';
+    ctx.fillText(text, mx, my);
+}
+
+function draw() {
+    // Clear
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Solve
+    const pos = solveKinematics(state.theta2);
+
+    // Status Update
+    const statusEl = document.getElementById('statusIndicator');
+    if (!pos) {
+        statusEl.textContent = "状态: 机构卡死 / 不可达";
+        statusEl.className = "status-badge status-err";
+        return;
+    }
+    statusEl.textContent = "状态: 正常";
+    statusEl.className = "status-badge status-ok";
+
+    // 1. Ground
+    drawLine(pos.A, pos.G, CONFIG.colors.ground, 2, [5, 5]);
+    drawJoint(pos.A, 'A');
+    drawJoint(pos.D, 'D');
+    drawJoint(pos.G, 'G');
+
+    // 2. Loop 1
+    drawLine(pos.A, pos.B, CONFIG.colors.link1, 5); // AB
+    drawText(pos.A, pos.B, "x1");
+    
+    drawLine(pos.C, pos.D, CONFIG.colors.link3, 5); // CD
+    drawText(pos.C, pos.D, "x3");
+
+    // 3. Coupler Triangle BCE
+    ctx.beginPath();
+    ctx.moveTo(pos.B.x, pos.B.y);
+    ctx.lineTo(pos.C.x, pos.C.y);
+    ctx.lineTo(pos.E.x, pos.E.y);
+    ctx.closePath();
+    ctx.fillStyle = CONFIG.colors.coupler;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = CONFIG.colors.couplerBorder;
+    ctx.stroke();
+    drawText(pos.B, pos.C, "x2");
+    drawText(pos.B, pos.E, "x5");
+
+    // 4. Loop 2
+    drawLine(pos.E, pos.F, CONFIG.colors.link7, 5); // EF
+    drawText(pos.E, pos.F, "x7");
+    
+    drawLine(pos.F, pos.G, CONFIG.colors.link8, 5); // FG
+    drawText(pos.F, pos.G, "x8");
+
+    // Joints
+    ['B', 'C', 'E', 'F'].forEach(k => drawJoint(pos[k], k));
+
+    // Update Matrices UI
+    updateMatrixUI();
+}
+
+// === UI 更新逻辑 ===
+
+function formatNum(num) {
+    if (Math.abs(num) < 1e-10) return `<span class="val-zero">0.00</span>`;
+    const str = num.toFixed(2);
+    const cls = num >= 0 ? 'val-pos' : 'val-neg';
+    return `<span class="${cls}">${str}</span>`;
+}
+
+function updateMatrixUI() {
+    const res = calculateMatrices(state.theta2);
+    if (!res) return;
+
+    // Render Matrix A
+    let htmlA = '<table><thead><tr><th></th><th>x1</th><th>x2</th><th>x3</th><th>x4</th><th>x5</th><th>x6</th><th>x7</th><th>x8</th></tr></thead><tbody>';
+    const rowsA = ['Φ1', 'Φ2', 'Φ3', 'Φ4'];
+    res.A.forEach((row, i) => {
+        htmlA += `<tr><th>${rowsA[i]}</th>` + row.map(v => `<td>${formatNum(v)}</td>`).join('') + '</tr>';
+    });
+    htmlA += '</tbody></table>';
+    document.getElementById('matrixA').innerHTML = htmlA;
+
+    // Render Matrix B
+    let htmlB = '<table><thead><tr><th></th><th>θ3</th><th>θ4</th><th>θ6</th><th>θ7</th></tr></thead><tbody>';
+    res.B.forEach((row, i) => {
+        htmlB += `<tr><th>${rowsA[i]}</th>` + row.map(v => `<td>${formatNum(v)}</td>`).join('') + '</tr>';
+    });
+    htmlB += '</tbody></table>';
+    document.getElementById('matrixB').innerHTML = htmlB;
+
+    // Det B Check
+    // Simple 4x4 determinant (hardcoded or simplified, here just informative)
+    // For JS simplicity, not implementing full Det function unless needed, 
+    // but we can do a quick check if visual feedback is weird.
+}
+
+// === 事件监听 ===
+
+const slider = document.getElementById('thetaSlider');
+const display = document.getElementById('thetaDisplay');
+
+slider.addEventListener('input', (e) => {
+    state.theta2 = deg2rad(parseFloat(e.target.value));
+    display.textContent = parseFloat(e.target.value).toFixed(1) + "°";
+    state.animating = false; // Stop animation on manual drag
+    draw();
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+    state.animating = false;
+    state.theta2 = deg2rad(60);
+    slider.value = 60;
+    display.textContent = "60.0°";
+    draw();
+});
+
+document.getElementById('btnAnimate').addEventListener('click', () => {
+    state.animating = !state.animating;
+    if (state.animating) animateLoop();
+});
+
+document.getElementById('btnSave').addEventListener('click', () => {
+    // 创建一个临时的链接来下载图片
+    const link = document.createElement('a');
+    link.download = `Stephenson_Linkage_${rad2deg(state.theta2).toFixed(0)}deg.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+});
+
+function animateLoop() {
+    if (!state.animating) return;
+    
+    let deg = rad2deg(state.theta2);
+    deg = (deg + 0.5) % 360;
+    
+    state.theta2 = deg2rad(deg);
+    slider.value = deg;
+    display.textContent = deg.toFixed(1) + "°";
+    
+    draw();
+    requestAnimationFrame(animateLoop);
+}
+
+// Init
+draw();
+
+</script>
+</body>
+</html>
